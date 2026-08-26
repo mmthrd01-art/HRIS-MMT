@@ -32,18 +32,19 @@
      ============================================================ -->
 <script>
   window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD0hKJdPmPFMhRs8dUH4lpcH0tn0JciG74",
-  authDomain: "hris-mmt.firebaseapp.com",
-  projectId: "hris-mmt",
-  storageBucket: "hris-mmt.firebasestorage.app",
-  messagingSenderId: "125381981543",
-  appId: "1:125381981543:web:1646d1ad739e9321e62bc2",
-  measurementId: "G-E85HZM5VLS"
-};
+    apiKey: "AIzaSyD0hKJdPmPFMhRs8dUH4lpcH0tn0JciG74",
+    authDomain: "hris-mmt.firebaseapp.com",
+    projectId: "hris-mmt",
+    storageBucket: "hris-mmt.firebasestorage.app",
+    messagingSenderId: "125381981543",
+    appId: "1:125381981543:web:1646d1ad739e9321e62bc2",
+    measurementId: "G-E85HZM5VLS",
+  };
 </script>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAnalytics, isSupported as analyticsIsSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signOut, updatePassword
@@ -65,13 +66,18 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Analytics bersifat opsional — dibungkus try/catch supaya adblocker/uBlock yang memblokir
+// domain analytics TIDAK menggagalkan aplikasi utama (Auth/Firestore/Storage tetap jalan normal).
+analyticsIsSupported().then((ok) => {
+  if (ok) { try { getAnalytics(app); } catch (e) { console.warn("Analytics tidak aktif:", e); } }
+}).catch(() => {});
+
 const ROOT = document.getElementById("app");
 
 /* ============================================================
    STATE
    ============================================================ */
 const state = {
-  setupChecked: false,
   user: null,        // Firebase Auth user
   profile: null,      // Firestore users/{uid} doc: { name, role, isActive }
   company: null,      // Firestore companySettings/main
@@ -389,63 +395,6 @@ function renderShell(innerHtml) {
 /* ============================================================
    VIEW: LOGIN / REGISTER
    ============================================================ */
-async function checkSuperAdminExists() {
-  try {
-    const snap = await getDocs(query(collection(db, "users"), where("role", "==", "SUPER_ADMIN"), limit(1)));
-    return !snap.empty;
-  } catch (e) {
-    console.error("checkSuperAdminExists:", e);
-    return false;
-  }
-}
-
-function renderFirstSuperAdminSetup() {
-  ROOT.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-8">
-      <div class="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-7">
-        <div class="text-center mb-6">
-          <div class="mx-auto mb-3 h-14 w-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-2xl">🛡️</div>
-          <h1 class="text-xl font-bold text-slate-900">Setup Super Admin Pertama</h1>
-          <p class="text-sm text-slate-500 mt-2">Belum ditemukan akun <b>SUPER_ADMIN</b>. Buat akun administrator utama untuk pertama kali.</p>
-        </div>
-        <form id="firstAdminForm" class="space-y-4">
-          <div><label class="block text-sm font-medium text-slate-700 mb-1">Nama Admin</label><input id="firstAdminName" required type="text" placeholder="Nama Admin" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none"></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-1">Email Admin</label><input id="firstAdminEmail" required type="email" placeholder="admin@mitramultiteknik.com" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none"></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-1">Password</label><input id="firstAdminPassword" required minlength="6" type="password" placeholder="Minimal 6 karakter" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none"></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-1">Konfirmasi Password</label><input id="firstAdminPassword2" required minlength="6" type="password" placeholder="Ulangi password" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none"></div>
-          <p id="firstAdminError" class="hidden text-sm text-red-600"></p>
-          <button id="firstAdminBtn" type="submit" class="w-full rounded-lg bg-slate-900 text-white text-sm font-semibold py-3 hover:bg-slate-800">Buat Super Admin</button>
-        </form>
-        <div class="mt-5 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800"><b>Penting:</b> Password tidak disimpan di HTML/GitHub. Password dibuat melalui Firebase Authentication.</div>
-      </div>
-    </div>`;
-
-  document.getElementById("firstAdminForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name=document.getElementById("firstAdminName").value.trim();
-    const email=document.getElementById("firstAdminEmail").value.trim();
-    const password=document.getElementById("firstAdminPassword").value;
-    const password2=document.getElementById("firstAdminPassword2").value;
-    const errEl=document.getElementById("firstAdminError");
-    const btn=document.getElementById("firstAdminBtn");
-    errEl.classList.add("hidden");
-    if(password!==password2){errEl.textContent="Konfirmasi password tidak sama.";errEl.classList.remove("hidden");return;}
-    if(password.length<6){errEl.textContent="Password minimal 6 karakter.";errEl.classList.remove("hidden");return;}
-    btn.disabled=true; btn.textContent="Membuat Super Admin...";
-    try{
-      if(await checkSuperAdminExists()) throw new Error("SUPER_ADMIN_EXISTS");
-      const cred=await createUserWithEmailAndPassword(auth,email,password);
-      await setDoc(doc(db,"users",cred.user.uid),{name,email,role:"SUPER_ADMIN",isActive:true,createdAt:serverTimestamp(),createdBy:"FIRST_SUPER_ADMIN_SETUP"});
-      state.setupChecked=true;
-      toast("Super Admin berhasil dibuat.","success");
-    }catch(err){
-      console.error(err);
-      errEl.textContent=err.message==="SUPER_ADMIN_EXISTS"?"Super Admin sudah ada. Silakan login menggunakan akun Super Admin.":(mapAuthError(err.code)||err.message||"Setup Super Admin gagal.");
-      errEl.classList.remove("hidden"); btn.disabled=false; btn.textContent="Buat Super Admin";
-    }
-  });
-}
-
 function renderLogin() {
   ROOT.innerHTML = `
     <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
@@ -564,15 +513,6 @@ function renderPendingApproval() {
 onAuthStateChanged(auth, async (user) => {
   state.user = user;
   state.profile = null;
-
-  if (!user && !state.setupChecked) {
-    const hasSuperAdmin = await checkSuperAdminExists();
-    state.setupChecked = true;
-    if (!hasSuperAdmin) {
-      renderFirstSuperAdminSetup();
-      return;
-    }
-  }
 
   if (user) {
     try {
