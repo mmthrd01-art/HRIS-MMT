@@ -940,11 +940,20 @@ onAuthStateChanged(auth, async (user) => {
       const snap = await getDoc(doc(db, "users", user.uid));
       state.profile = snap.exists() ? snap.data() : null;
     } catch (e) {
-      console.error(e);
+      console.error("Gagal membaca profil user:", e);
     }
 
+    // PENTING: dibungkus try/catch terpisah. Untuk akun yang belum aktif (PENDING),
+    // Firestore Rules memang menolak baca companySettings — itu wajar & sesuai desain.
+    // Tanpa try/catch di sini, error itu akan menggagalkan seluruh callback ini SEBELUM
+    // render() sempat dipanggil, membuat halaman macet selamanya di "Memuat MMT HRIS...".
     if (!state.company) {
-      state.company = await ensureCompanySettings();
+      try {
+        state.company = await ensureCompanySettings();
+      } catch (e) {
+        console.warn("Gagal memuat Company Settings (kemungkinan akun belum aktif):", e);
+        state.company = DEFAULT_COMPANY_SETTINGS;
+      }
     }
   }
 
@@ -954,30 +963,40 @@ onAuthStateChanged(auth, async (user) => {
 /* ============================================================
    COMPANY SETTINGS
    ============================================================ */
+const DEFAULT_COMPANY_SETTINGS = {
+  name: "CV. MITRA MULTI TEKNIK",
+  shortName: "MMT",
+  businessType: "SPECIALIST AIR CONDITIONER & ELECTRICAL MECHANICAL",
+  address: "Jl. Mesjid Nurul Jihad, Perumahan Graha Tata Persada Blok C No. 15, Biringkaloro, Pallangga – Gowa",
+  email: "mmthrd01@gmail.com",
+  phone: "082259979760",
+  whatsapp: "082259979760",
+  website: "",
+  directorName: "Hasanuddin Andi Hasdir",
+  logoUrl: "",
+};
+
 async function ensureCompanySettings() {
   const ref_ = doc(db, "companySettings", "main");
-  const snap = await getDoc(ref_);
+
+  // getDoc dibungkus try/catch sendiri: untuk akun PENDING/nonaktif, Firestore Rules
+  // menolak baca ini (sesuai desain), dan itu TIDAK BOLEH menggagalkan aplikasi —
+  // cukup pakai nilai default lokal sampai akun diaktifkan.
+  let snap;
+  try {
+    snap = await getDoc(ref_);
+  } catch (e) {
+    return { ...DEFAULT_COMPANY_SETTINGS };
+  }
   if (snap.exists()) return snap.data();
 
-  const defaults = {
-    name: "CV. MITRA MULTI TEKNIK",
-    shortName: "MMT",
-    businessType: "SPECIALIST AIR CONDITIONER & ELECTRICAL MECHANICAL",
-    address: "Jl. Mesjid Nurul Jihad, Perumahan Graha Tata Persada Blok C No. 15, Biringkaloro, Pallangga – Gowa",
-    email: "mmthrd01@gmail.com",
-    phone: "082259979760",
-    whatsapp: "082259979760",
-    website: "",
-    directorName: "Hasanuddin Andi Hasdir",
-    logoUrl: "",
-  };
   // Jika belum login sebagai user ber-permission, biarkan gagal senyap — halaman
   // Settings yang akan membuat dokumen ini saat pertama kali dibuka oleh SUPER_ADMIN/HRD.
   try {
-    await setDoc(ref_, { ...defaults, updatedAt: serverTimestamp() });
-    return defaults;
+    await setDoc(ref_, { ...DEFAULT_COMPANY_SETTINGS, updatedAt: serverTimestamp() });
+    return { ...DEFAULT_COMPANY_SETTINGS };
   } catch {
-    return defaults;
+    return { ...DEFAULT_COMPANY_SETTINGS };
   }
 }
 
