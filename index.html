@@ -578,10 +578,21 @@ onAuthStateChanged(auth, async (user)=>{
     $('loginScreen').style.display = 'none';
     $('app').classList.add('show');
     renderUserChip();
+
+    // Lock/unlock the Users & Role menu immediately (before any other async
+    // work) so a fast click can never slip past the permission check.
+    if(currentUserDoc.role === 'super_admin'){
+      $('navUsers').classList.remove('disabled');
+      $('navUsers').title = '';
+    } else {
+      $('navUsers').classList.add('disabled');
+      $('navUsers').title = 'Hanya Super Admin';
+      renderUsersAccessDenied();
+    }
+
     await loadCompanySettings();
     await loadSignatures();
     if(currentUserDoc.role === 'super_admin'){ loadUsersList(); }
-    else { $('navUsers').classList.add('disabled'); $('navUsers').title = 'Hanya Super Admin'; }
   } else {
     currentUserDoc = null;
     $('app').classList.remove('show');
@@ -605,6 +616,8 @@ function roleLabel(role){
 document.querySelectorAll('.nav-item[data-page]').forEach(item=>{
   item.addEventListener('click', ()=>{
     if(item.classList.contains('disabled')) return;
+    const targetPage = item.dataset.page;
+    if(targetPage === 'users' && (!currentUserDoc || currentUserDoc.role !== 'super_admin')) return;
     document.querySelectorAll('.nav-item[data-page]').forEach(i=>i.classList.remove('active'));
     item.classList.add('active');
     const page = item.dataset.page;
@@ -867,6 +880,9 @@ $('btnSaveSignature').onclick = async ()=>{
 };
 
 /* ---------------- Users & Roles (Super Admin only) ---------------- */
+function renderUsersAccessDenied(){
+  $('usersListWrap').innerHTML = `<div class="empty-state"><div class="ic">🔒</div><div class="title">Anda tidak memiliki akses ke halaman ini</div><div class="desc">Hanya Super Admin yang dapat mengelola pengguna dan role. Hubungi Super Admin jika Anda perlu diberikan role akses.</div></div>`;
+}
 async function loadUsersList(){
   const snap = await getDocs(collection(db, 'users'));
   const wrap = $('usersListWrap');
